@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Rightopia Surreal ⚡️</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+  <!-- Creepster font -->
+  <link href="https://fonts.googleapis.com/css2?family=Creepster&display=swap" rel="stylesheet">
+</head>
+<body>
+<script>
+let walkers = [];
+let earthParticles = [];
+let lightningBolts = [];
+let floatingText = [];
+let act = 0;
+let font, quoteFont;
+let centerX, centerY, earthRadius;
+let currentBolt = 0;
+let boltTimer = 0;
+let nextWordTime = 0;
+let wordIndex = 0;
+
+// Surreal story phrases in order
+let storyPhrases = [
+  "A world beyond sight",
+  "Colors breathe",
+  "Gravity whispers",
+  "Dreams collide",
+  "RIGHTOPIA rises"
+];
+
+function preload() {
+  font = loadFont('https://cdnjs.cloudflare.com/ajax/libs/topcoat/0.8.0/font/SourceCodePro-Regular.otf');
+  // surreal quote font
+  quoteFont = 'Creepster';
+}
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  centerX = width / 2;
+  centerY = height / 2;
+  earthRadius = min(width, height) / 4;
+
+  // Walkers forming RIGHTOPIA
+  let pts = font.textToPoints("RIGHTOPIA", centerX - 300, centerY + 20, 120, {
+    sampleFactor: 0.25,
+    simplifyThreshold: 0
+  });
+  for (let p of pts) {
+    walkers.push(new Walker(p.x, p.y));
+  }
+
+  // Earth particles
+  for (let i = 0; i < 2000; i++) {
+    let angle = random(TWO_PI);
+    let r = earthRadius * sqrt(random());
+    let x = centerX + r * cos(angle);
+    let y = centerY + r * sin(angle);
+    let isLand = random() < 0.3;
+    earthParticles.push({x, y, land: isLand, vx: 0, vy: 0});
+  }
+}
+
+function draw() {
+  // dreamlike background
+  let bgCol = color(10 + 10*sin(frameCount*0.01), 10, 30 + 20*cos(frameCount*0.01));
+  background(bgCol);
+
+  // draw earth
+  for (let p of earthParticles){
+    noStroke();
+    fill(p.land ? color(0,180,0,200) : color(255,0,0,150));
+    ellipse(p.x, p.y, 3);
+    if(p.vx || p.vy){
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.95; 
+      p.vy *= 0.95;
+    }
+  }
+
+  // walkers
+  for (let w of walkers){
+    if(act === 0) w.idle();
+    else w.update();
+    w.show();
+  }
+
+  // lightning
+  lightningBolts = lightningBolts.filter(b => b.opacity > 0);
+  for(let b of lightningBolts){
+    b.update();
+  }
+
+  // floating story text - update sequentially
+  if(act === 4 && wordIndex < storyPhrases.length && frameCount > nextWordTime){
+    floatingText.push({
+      phrase: storyPhrases[wordIndex],
+      x: width/2,
+      y: height,
+      size: 36,
+      opacity: 255
+    });
+    wordIndex++;
+    nextWordTime = frameCount + 180; // spacing between words
+  }
+
+  for(let t of floatingText){
+    t.y -= 0.8; // ⬅ faster rise (was 0.5)
+    t.opacity -= 0.4; 
+    textAlign(CENTER);
+    fill(255, 255, 0, t.opacity); // bright yellow
+    textSize(t.size);
+    textFont(quoteFont);
+    text(t.phrase, t.x, t.y);
+  }
+  floatingText = floatingText.filter(t => t.opacity > 0);
+}
+
+// Walker forming RIGHTOPIA
+class Walker {
+  constructor(x, y){
+    this.target = createVector(x, y);
+    this.pos = createVector(random(width), random(height));
+  }
+  idle(){
+    this.pos.add(p5.Vector.random2D().mult(0.5));
+  }
+  update(){
+    let mouseVec = createVector(mouseX, mouseY);
+    let d = p5.Vector.dist(this.pos, mouseVec);
+    if(d < 100){
+      let repel = p5.Vector.sub(this.pos, mouseVec).setMag(2);
+      this.pos.add(repel);
+    }
+    this.pos.lerp(this.target, 0.05);
+    this.pos.add(p5.Vector.random2D().mult(0.3));
+  }
+  show(){
+    noStroke();
+    fill(255, 255, 200, 220);
+    ellipse(this.pos.x, this.pos.y, 5 + sin(frameCount*0.1)*2);
+  }
+}
+
+// Click to change phase
+function mousePressed(){
+  act = (act + 1) % 5;
+  wordIndex = 0;
+  nextWordTime = frameCount;
+
+  // Phase 2: sequential lightning
+  if(act === 2){
+    lightningBolts = [];
+    currentBolt = 0;
+    boltTimer = frameCount;
+    for(let i=0; i<6; i++){
+      let target = random(earthParticles);
+      let margin = 30;
+      let targetCopy = {x: target.x, y: target.y - margin};
+      let fromLeft = i % 2 === 0;
+      lightningBolts.push(new Lightning(targetCopy, fromLeft));
+    }
+  }
+
+  // Phase 4: particle explosion
+  if(act === 4){
+    for(let p of earthParticles){
+      p.vx = random(-5,5);
+      p.vy = random(-5,5);
+    }
+  }
+}
+
+// Vertical lightning from left/right
+class Lightning {
+  constructor(targetParticle, fromLeft=true){
+    this.target = targetParticle;
+    this.startX = fromLeft ? 0 : width;
+    this.startY = 0;
+    this.segments = [];
+    this.opacity = 255;
+    this.generateSegments();
+  }
+
+  generateSegments(){
+    let x = this.startX;
+    let y = this.startY;
+    this.segments = [];
+    while(y < this.target.y){
+      let nextX = lerp(x, this.target.x, 0.1) + random(-20,20);
+      let nextY = y + random(30,80);
+      if(nextY > this.target.y) nextY = this.target.y;
+      this.segments.push({x1:x, y1:y, x2:nextX, y2:nextY});
+      x = nextX; y = nextY;
+    }
+    this.segments.push({x1:x, y1:y, x2:this.target.x, y2:this.target.y});
+  }
+
+  update(){
+    if(frameCount % 5 === 0) this.generateSegments();
+    stroke(255, 240, 50, this.opacity);
+    strokeWeight(4);
+    for(let s of this.segments){
+      line(s.x1, s.y1, s.x2, s.y2);
+    }
+    this.opacity -= 5;
+  }
+}
+</script>
+</body>
+</html>
